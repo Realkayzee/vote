@@ -15,12 +15,14 @@ pragma solidity 0.8.9;
 
 
 contract Voting{
+    //****State Variable */
     address official;
-    address[] registeredVoters;
+    bool started;
     bool electionStarted;
     uint256 maxNumberVoters;
     uint256 contestantNumber;
-    uint128 id;
+    ContestantDetails winner;
+    uint256 electionPeriod;
 
 
     struct Voters{
@@ -32,10 +34,10 @@ contract Voting{
 
 
     struct ContestantDetails {
-        address contestant;
         string contestantName;
         uint128 contestantId;
         bool contested;
+        uint128 numberOfVote;
     }
 
     ContestantDetails[] registeredContestant;
@@ -43,11 +45,10 @@ contract Voting{
     mapping(address => Voters) voter;
     mapping(address => ContestantDetails) contestant;
 
-
-    constructor (address _officialAddr, uint256 _maxNumber, uint256 _contestantNumber) {
+/// @notice _electionPeriod is in hours, users specify the period they want the election to last in hours
+    constructor (address _officialAddr) {
         official = _officialAddr;
-        maxNumber = _maxNumber;
-        contestantNumber = _contestantNumber;
+
     }
 
     modifier onlyOfficial{
@@ -55,35 +56,100 @@ contract Voting{
 
         _;
     }
+    modifier electionNotStarted{
+        require(!electionStarted, "You can't vote, election started already");
+
+        _;
+    }
+
+    function start(uint256 _maxNumber, uint256 _contestantNumber, uint256 _electionPeriod) external onlyOfficial electionNotStarted {
+        require(!started, "The election process have started");
+        maxNumberVoters = _maxNumber;
+        contestantNumber = _contestantNumber;
+        electionPeriod = _electionPeriod * (1 hours);
+
+        started = true;
+    }
 
 // Function that enable voters to register
 
-    function RegVoter() external {
-        require(!electionStarted, "You can't vote, election started already");
-        require(RegisteredVoters.length < maxNumberVoters, "Maximum number of voters already attained");
+    function RegVoter() external electionNotStarted {
+        require(started, "Election Process have not started");
         Voters storage v = voter[msg.sender];
+        require(!v.registered, "You are have registered");
+        require(RegisteredVoters.length < maxNumberVoters, "Maximum number of voters already attained");
         v.registered = true;
-        
+
+        RegisteredVoters.push(v);
+
     }
 // Function that enable contestant to register
-    function RegContestant(string memory _contestantName) public {
-        require(!contested, "You can not register as a contestant again");
+    function RegContestant(string memory _contestantName) public electionNotStarted {
+        require(started, "Election Process have not started");
+        ContestantDetails storage c = contestant[msg.sender];
+        require(!c.contested, "You can not register as a contestant again");
         require(registeredContestant.length < contestantNumber, "Contestant number already attained");
-        registeredContestant.push(
-            ContestantDetails({
-                contestant: msg.sender,
-                contestantName: _contestantName,
-                contestantId: id
-            })
-        );
-        id++;
+        c.contestantName = _contestantName;
+        c.contested = true;
+        c.contestantId = uint128(registeredContestant.length);
+        registeredContestant.push(c);
     }
 
-    function startElection() public onlyOfficial {
-        require(!electionStarted, "Election Already started");
+    function startElection() public onlyOfficial electionNotStarted {
+        require(started, "Election Process have not started");
         require(registeredContestant.length == contestantNumber, "All contestant have not regiatered");
-        require()
-    }
         
+        electionStarted = true;
+    }
+    
+    function vote(uint256 _contestantId) external {
+        Voters storage v = voter[msg.sender];
+        require(electionStarted, "Election have not started");
+        require(v.registered, "You are not a registered voter");
+        require(!v.voted, "You can not vote twice");
+        registeredContestant[_contestantId].numberOfVote += 1;
+
+        v.voted = true;
+    }
+
+    function electionCollation() public onlyOfficial {
+        ContestantDetails memory con;
+        require(block.timestamp > electionPeriod, "Election is still going on");
+        electionStarted = true;
+
+        // We check the modal for the number of vote
+        uint128 winnerCounter;
+        for(uint256 i = 0; i < registeredContestant.length; i++){
+            if(winnerCounter < registeredContestant[i].numberOfVote){
+                winnerCounter = registeredContestant[i].numberOfVote;
+                con = registeredContestant[i];
+            }
+        }
+        winner = con;
+        // reset the all state variable back to normal
+        electionStarted = false;
+        started = false;
+        maxNumberVoters = 0;
+        contestantNumber = 0;
+        electionPeriod = 0;
+    }
+
+    function checkWinner() external view returns(ContestantDetails memory){
+        return winner;
+    }
+
+    function checkContestant() external view returns(ContestantDetails[] memory){
+        return registeredContestant;
+    }
+
+    function checkVoters() external view returns(Voters[] memory){
+        return RegisteredVoters;
+    }
+
+    function checkIfRegistered() external view returns(bool){
+        return voter[msg.sender].registered;
+    }
+    function checkIfVoted() external view returns(bool){
+        return voter[msg.sender].voted;
     }
 }
