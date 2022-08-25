@@ -40,6 +40,9 @@ contract Voting{
 
     ContestantDetails[] registeredContestant;
 
+    mapping(address => Voters) voter;
+    mapping(address => ContestantDetails) contestant;
+
 
     constructor (address _officialAddr, uint256 _maxNumber, uint256 _contestantNumber) {
         official = _officialAddr;
@@ -58,9 +61,9 @@ contract Voting{
     function RegVoter() external {
         require(!electionStarted, "You can't vote, election started already");
         require(RegisteredVoters.length < maxNumberVoters, "Maximum number of voters already attained");
-        registeredVoters.push(msg.sender);
-
-        registered = true;
+        Voters storage v = voter[msg.sender];
+        v.registered = true;
+        
     }
 // Function that enable contestant to register
     function RegContestant(string memory _contestantName) public {
